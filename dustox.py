@@ -1,0 +1,583 @@
+# Import libraries
+import os
+import re
+import sys
+import time
+import shutil
+import argparse
+import threading
+import subprocess
+
+# Define colors
+class Colors:
+    WHITE = '\033[0;97m'
+    CYAN = '\033[0;36m'
+    LIGHT_RED = '\033[0;91m'
+    LIGHT_GREEN = '\033[0;92m'
+    YELLOW = '\033[0;93m'
+    LIGHT_BLUE = '\033[0;94m'
+    PINK = '\033[0;95m'
+    NEG_LIGHT_GREEN = '\033[1;92m'
+    NEG_LIGHT_RED = '\033[1;91m'
+    NEG_YELLOW = '\033[1;93m'
+    NEG_PINK = '\033[1;95m'
+
+# Check user mode
+def verify_root():
+    global root
+    if os.geteuid() != 0:
+        root = None
+    else:
+        root = True
+
+# Check required tools
+def check_tool_installed(tool_name):
+    if tool_name == 'net-tools':
+        return os.path.exists('/sbin/ifconfig')
+    return shutil.which(tool_name) is not None
+
+def initializing_pupitar_noroot():
+    tools_to_check = ['nmap']
+    not_installed_tools = [tool for tool in tools_to_check if not check_tool_installed(tool)]
+    
+    if not_installed_tools:
+        for tool in not_installed_tools:
+            print(f"{Colors.LIGHT_RED}[-] {Colors.YELLOW}{tool} {Colors.WHITE}not installed. To install, use {Colors.LIGHT_GREEN}'pkg install {tool}'{Colors.WHITE}.")
+            sys.exit(0)
+
+# Waiting animation
+def waiting_animation(scanning_thread):
+
+    symbols = [".  ", ".. ", "..."]
+    while scanning_thread.is_alive():
+        for symbol in symbols:
+            sys.stdout.write(" " * 12 + "\r")
+            sys.stdout.write(f"{Colors.PINK}[/] {Colors.WHITE}Waiting" + symbol)
+            sys.stdout.flush()
+            time.sleep(0.5)
+
+# Principal scanning logic
+def scan_network():
+    if localnet == True:
+        if not root:
+            print("\n" + f"{Colors.LIGHT_RED}[-] {Colors.WHITE}Root is required to use --localnet flag.")
+            print(f"{Colors.LIGHT_RED}[-] {Colors.WHITE}Use -ip flag without --localnet or execute as root.")
+            sys.exit()
+
+    print(f"{Colors.LIGHT_BLUE}[#] {Colors.WHITE}Scanning started, wait a moment.")
+
+    # --localnet flag
+    if localnet ==  True:
+        if verbose:
+            print(f"\n{Colors.PINK}[/] {Colors.WHITE}Checking IP on the network.")
+            # Waiting animation
+            scanning_thread = threading.current_thread()
+            waiting_thread = threading.Thread(target=waiting_animation, args=(scanning_thread,))
+            waiting_thread.daemon = True
+            waiting_thread.start()
+            
+        try:
+            with open('/dev/null', 'w') as null_file:
+                output = subprocess.check_output(['arp-scan', "--localnet"], universal_newlines=True, stderr=null_file)
+
+                if "0 responded" in output:
+                    print(f"\n\n{Colors.LIGHT_RED}[-] {Colors.WHITE}Not found IP in network.")
+                    
+        except subprocess.CalledProcessError as e:
+            print(f"\n\n{Colors.LIGHT_RED}[-] {Colors.WHITE}Unknown error.")
+            sys.exit()
+        except KeyboardInterrupt:
+            if verbose:
+                print(f"\n\n{Colors.LIGHT_GREEN}[+] {Colors.WHITE}Scan interrupted")
+            else:
+                print(f"{Colors.LIGHT_GREEN}[+] {Colors.WHITE}Scan interrupted")
+            sys.exit()
+
+        ip_info = []
+        lines = output.split('\n')
+        
+        for line in lines:
+            parts = line.split()
+            if len(parts) >= 3:
+                ip_address = parts[0]
+
+                if re.match(r'\d+\.\d+\.\d+\.\d+', ip_address):
+                    ip_info.append(ip_address)
+
+        for ip_address in ip_info:
+            try:
+                num_ips_scanned = 0
+                with open('/dev/null', 'w') as null_file:
+                    nmap_output = subprocess.check_output(['nmap', '-T5', '-open', ip_address, *command_list], universal_newlines=True, stderr=null_file)
+
+                paragraphs = re.split(r'\n(?=Nmap scan report)', nmap_output)
+                found = False
+
+                if verbose:
+                    print()
+
+                for paragraph in paragraphs:
+                    match_ip = re.search(r'Nmap scan report for (\d+\.\d+\.\d+\.\d+)', paragraph)
+                    match_ports = re.finditer(r'(\d+\/[a-zA-Z]+)\s+(open)\s+([a-zA-Z-]+)', paragraph)
+                    match_mac = re.search(r'MAC Address: ([0-9A-F:]+) \((.*?)\)', paragraph)
+
+                    if match_ip:
+                        ip_address = match_ip.group(1)
+                        print(f"\n{Colors.LIGHT_GREEN}----| IP: {Colors.WHITE}{ip_address}")
+
+                        if match_mac:
+                            mac = match_mac.group(1)
+                            name = match_mac.group(2)
+                            found = True
+                        else:
+                            if root:
+                                mac = f"{Colors.NEG_LIGHT_RED}Currently not accessible"
+                                name = f"{Colors.NEG_LIGHT_RED}Currently not accessible"
+                            else:
+                                mac = f"{Colors.NEG_LIGHT_RED}Need root mode"
+                                name = f"{Colors.NEG_LIGHT_RED}Need root mode"
+
+                        print(f"""{Colors.YELLOW}NAME: {Colors.WHITE}{name}\n{Colors.YELLOW}MAC:  {Colors.WHITE}{mac}""")
+                        print(f"{Colors.LIGHT_GREEN}PORT         {Colors.LIGHT_GREEN}STATE     {Colors.LIGHT_GREEN}SERVICE")
+
+                        if match_ports:
+                            for match in match_ports:
+                                port = match.group(1)
+                                state = match.group(2)
+                                service = match.group(3)
+
+                                chars_to_add = max(0, 9 - len(port))
+                                port = port + " " * chars_to_add
+
+                                color_state = (Colors.NEG_LIGHT_GREEN if state == "open"
+                                            else Colors.NEG_YELLOW if state == "filtered"
+                                            else Colors.NEG_LIGHT_RED)
+
+                                print(f"{Colors.WHITE}{port}    {color_state}{state}      {Colors.WHITE}{service}")
+                            num_ips_scanned += 1
+                        
+                        if verbose:
+                            print()
+
+                    if "Nmap done" in paragraph:
+                        match_time = re.search(r'in (\d+\.\d+) seconds', paragraph)
+                        if match_time:
+                            total_scan_time = match_time.group(1)
+                
+                if not found:
+                    if args.rangeip:
+                        print(f"\n{Colors.LIGHT_GREEN}----| IP: {Colors.WHITE}{args.ip}")
+                    else:
+                        print(f"\n{Colors.LIGHT_GREEN}----| IP: {Colors.WHITE}{ip_address}")
+                    print(f"{Colors.LIGHT_RED}[-] {Colors.WHITE}No result.")
+                    if verbose:
+                        print()
+                print(f"{Colors.LIGHT_GREEN}[+] {Colors.WHITE}{num_ips_scanned} hosts scanned in {total_scan_time} seconds.")
+                if verbose:
+                    print()
+
+            except subprocess.CalledProcessError as e:
+                print(f"{Colors.LIGHT_RED}[-] {Colors.WHITE}Unknown error: {str(e)}")
+            except KeyboardInterrupt:
+                if verbose:
+                    print(f"\n\n{Colors.LIGHT_GREEN}[+] {Colors.WHITE}Scan interrupted")
+                else:
+                    print(f"{Colors.LIGHT_GREEN}[+] {Colors.WHITE}Scan interrupted")
+
+    # --genericip
+    elif genericip == True:
+        if verbose:
+            print(f"\n{Colors.PINK}[/] {Colors.WHITE}Checking IP on the network.")
+            # Waiting animation
+            scanning_thread = threading.current_thread()
+            waiting_thread = threading.Thread(target=waiting_animation, args=(scanning_thread,))
+            waiting_thread.daemon = True
+            waiting_thread.start()
+
+        num_ips_scanned = 0
+        for ip_address in genericipaddress:
+            try:
+                with open('/dev/null', 'w') as null_file:
+                    nmap_output = subprocess.check_output(['nmap', '-T5', '-open', ip_address, *command_list], universal_newlines=True, stderr=null_file)
+
+                paragraphs = re.split(r'\n(?=Nmap scan report)', nmap_output)
+                found = False
+
+                if verbose:
+                    print()
+
+                for paragraph in paragraphs:
+                    match_ip = re.search(r'Nmap scan report for (\d+\.\d+\.\d+\.\d+)', paragraph)
+                    match_ports = re.finditer(r'(\d+\/[a-zA-Z]+)\s+(open)\s+([a-zA-Z-]+)', paragraph)
+                    match_mac = re.search(r'MAC Address: ([0-9A-F:]+) \((.*?)\)', paragraph)
+
+                    if match_ip:
+                        ip_address = match_ip.group(1)
+                        print(f"\n{Colors.LIGHT_GREEN}----| IP: {Colors.WHITE}{ip_address}")
+
+                        if match_mac:
+                            mac = match_mac.group(1)
+                            name = match_mac.group(2)
+                            found = True
+                        else:
+                            if root:
+                                mac = f"{Colors.NEG_LIGHT_RED}Currently not accessible"
+                                name = f"{Colors.NEG_LIGHT_RED}Currently not accessible"
+                            else:
+                                mac = f"{Colors.NEG_LIGHT_RED}Need root mode"
+                                name = f"{Colors.NEG_LIGHT_RED}Need root mode"
+
+                        print(f"""{Colors.YELLOW}NAME: {Colors.WHITE}{name}\n{Colors.YELLOW}MAC:  {Colors.WHITE}{mac}""")
+                        print(f"{Colors.LIGHT_GREEN}PORT         {Colors.LIGHT_GREEN}STATE     {Colors.LIGHT_GREEN}SERVICE")
+
+                        if match_ports:
+                            for match in match_ports:
+                                port = match.group(1)
+                                state = match.group(2)
+                                service = match.group(3)
+
+                                chars_to_add = max(0, 9 - len(port))
+                                port = port + " " * chars_to_add
+
+                                color_state = (Colors.NEG_LIGHT_GREEN if state == "open"
+                                            else Colors.NEG_YELLOW if state == "filtered"
+                                            else Colors.NEG_LIGHT_RED)
+
+                                print(f"{Colors.WHITE}{port}    {color_state}{state}      {Colors.WHITE}{service}")
+                            num_ips_scanned += 1
+                        
+                        if verbose:
+                            print()
+
+                    if "Nmap done" in paragraph:
+                        match_time = re.search(r'in (\d+\.\d+) seconds', paragraph)
+                        if match_time:
+                            total_scan_time = match_time.group(1)
+                
+                if not found:
+                    if args.rangeip:
+                        print(f"\n{Colors.LIGHT_GREEN}----| IP: {Colors.WHITE}{args.ip}")
+                    else:
+                        print(f"\n{Colors.LIGHT_GREEN}----| IP: {Colors.WHITE}{ip_address}")
+                    print(f"{Colors.LIGHT_RED}[-] {Colors.WHITE}No result.")
+                    if verbose:
+                        print()
+                print(f"{Colors.LIGHT_GREEN}[+] {Colors.WHITE}{num_ips_scanned} hosts scanned in {total_scan_time} seconds.")
+
+            except subprocess.CalledProcessError as e:
+                print(f"{Colors.LIGHT_RED}[-] {Colors.WHITE}Unknown error: {str(e)}")
+            except KeyboardInterrupt:
+                if verbose:
+                    print(f"\n\n{Colors.LIGHT_GREEN}[+] {Colors.WHITE}Scan interrupted")
+                else:
+                    print(f"{Colors.LIGHT_GREEN}[+] {Colors.WHITE}Scan interrupted")
+                sys.exit()
+
+    # -ip flag
+    else:
+        if verbose:
+            print(f"\n{Colors.PINK}[/] {Colors.WHITE}Collecting IP information.")
+            # Waiting animation
+            scanning_thread = threading.current_thread()
+            waiting_thread = threading.Thread(target=waiting_animation, args=(scanning_thread,))
+            waiting_thread.daemon = True
+            waiting_thread.start()
+
+        try:
+            with open('/dev/null', 'w') as null_file:
+                nmap_output = subprocess.check_output(['nmap', '-T5', *command_list], universal_newlines=True, stderr=null_file)
+            paragraphs = re.split(r'\n(?=Nmap scan report)', nmap_output)
+            num_ips_scanned = 0
+
+            if verbose:
+                print()
+
+            for paragraph in paragraphs:
+                match_ip = re.search(r'Nmap scan report for (\d+\.\d+\.\d+\.\d+)', paragraph)
+                match_ports = re.finditer(r'(\d+\/[a-zA-Z]+)\s+(open)\s+([a-zA-Z-]+)', paragraph)
+                match_mac = re.search(r'MAC Address: ([0-9A-F:]+) \((.*?)\)', paragraph)
+
+
+                if match_ip:
+                    found_port = False
+                    num_ips_scanned += 1
+                    ip_address = match_ip.group(1)
+                    print(f"\n{Colors.LIGHT_GREEN}----| IP: {Colors.WHITE}{ip_address}")
+
+                    for match in match_ports:
+                        port = match.group(1)
+                        state = match.group(2)
+                        service = match.group(3)
+
+                        chars_to_add = max(0, 9 - len(port))
+                        port = port + " " * chars_to_add
+
+                        color_state = (Colors.NEG_LIGHT_GREEN if state == "open"
+                                    else Colors.NEG_YELLOW if state == "filtered"
+                                    else Colors.NEG_LIGHT_RED)
+                        found_port = True
+
+                    if found_port:
+                        if match_mac:
+                            mac = match_mac.group(1)
+                            name = match_mac.group(2)
+                            found = True
+                        else:
+                            if root:
+                                print(f"{Colors.LIGHT_RED}[-] {Colors.WHITE}No result.")
+                                break
+                            else:
+                                mac = f"{Colors.NEG_LIGHT_RED}Need root mode"
+                                found = None
+                                name = f"{Colors.NEG_LIGHT_RED}Need root mode"
+
+                        print(f"""{Colors.YELLOW}NAME: {Colors.WHITE}{name}\n{Colors.YELLOW}MAC:  {Colors.WHITE}{mac}""")
+                        print(f"{Colors.LIGHT_GREEN}PORT         {Colors.LIGHT_GREEN}STATE     {Colors.LIGHT_GREEN}SERVICE")
+
+                        match_ports = re.finditer(r'(\d+\/[a-zA-Z]+)\s+(open)\s+([a-zA-Z-]+)', paragraph)
+                        for match in match_ports:
+                            port = match.group(1)
+                            state = match.group(2)
+                            service = match.group(3)
+
+                            chars_to_add = max(0, 9 - len(port))
+                            port = port + " " * chars_to_add
+
+                            color_state = (Colors.NEG_LIGHT_GREEN if state == "open"
+                                        else Colors.NEG_YELLOW if state == "filtered"
+                                        else Colors.NEG_LIGHT_RED)
+
+                            print(f"{Colors.WHITE}{port}    {color_state}{state}      {Colors.WHITE}{service}")
+                    else:
+                        # Se não houver portas abertas, não exiba "mac" e "name"
+                        if verbose:
+                            print(f"{Colors.LIGHT_RED}[-] {Colors.WHITE}No result.")
+
+            if "Nmap done" in paragraph:
+                match_time = re.search(r'in (\d+\.\d+) seconds', paragraph)
+                if match_time:
+                    total_scan_time = match_time.group(1)
+
+                if total_scan_time:
+                    if num_ips_scanned == 0:
+                        if args.rangeip:
+                            print(f"\n{Colors.LIGHT_GREEN}----| IP: {Colors.WHITE}{args.ip}")
+                        else:
+                            print(f"\n{Colors.LIGHT_GREEN}----| IP: {Colors.WHITE}{args.ip}")
+                        print(f"{Colors.LIGHT_RED}[-] {Colors.WHITE}No result.")
+                    print(f"\n{Colors.LIGHT_GREEN}[+] {Colors.WHITE}{num_ips_scanned} hosts scanned in {total_scan_time} seconds.")
+
+        except subprocess.CalledProcessError as e:
+            print(f"{Colors.LIGHT_RED}[-] {Colors.WHITE}Unknown error: {str(e)}")
+        except KeyboardInterrupt:
+            if verbose:
+                print(f"\n\n{Colors.LIGHT_GREEN}[+] {Colors.WHITE}Scan interrupted")
+            else:
+                print(f"{Colors.LIGHT_GREEN}[+] {Colors.WHITE}Scan interrupted")
+        sys.exit()
+
+def generic_ip():
+    global genericipaddress
+    genericipaddress = {
+        '192.168.0.0-255',
+        '192.168.1.0-255',
+        '192.168.2.0-255',
+        '192.168.3.0-255',
+        '192.168.4.0-255',
+        '192.168.5.0-255',
+        '192.168.6.0-255',
+        '192.168.7.0-255',
+        '192.168.8.0-255',
+        '192.168.9.0-255',
+        '192.168.10.0-255',
+        '10.0.0.0-255',
+        '10.0.1.0-255',
+        '10.0.2.0-255',
+        '10.0.3.0-255',
+        '10.0.4.0-255',
+        '10.0.5.0-255',
+        '10.0.6.0-255',
+        '10.0.7.0-255',
+        '10.0.8.0-255',
+        '10.0.9.0-255',
+        '10.0.10.0-255',
+        '10.1.0.0-255',
+        '10.1.1.0-255',
+        '10.1.2.0-255',
+        '10.1.3.0-255',
+        '10.1.4.0-255',
+        '10.1.5.0-255',
+        '10.1.6.0-255',
+        '10.1.7.0-255',
+        '10.1.8.0-255',
+        '10.1.9.0-255',
+        '10.1.10.0-255',
+    }
+
+# Check valid flags
+def is_valid_ip(ip):
+    ip_pattern = r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
+    if re.match(ip_pattern, ip):
+        parts = ip.split('.')
+        for part in parts:
+            if not (0 <= int(part) <= 255):
+                return False
+        return True
+    
+def is_valid_port(port):
+    try:
+        port = int(port)
+        if 1 <= port <= 65535:
+            return True
+    except ValueError:
+        return False
+
+def is_valid_rangeip(rangeip):
+    try:
+        rangeip = int(rangeip)
+        if 1 <= rangeip <= 255:
+            return True
+    except ValueError:
+        return False
+    
+def is_valid_rangeport(port, rangeport):
+    try:
+        port = int(port)
+        rangeport = int(rangeport)
+        return 0 <= port <= 65535 and rangeport >= port
+    except ValueError:
+        return False
+
+# Flags management
+def main():
+    global args
+    global verbose  
+    verbose = None
+    global localnet
+    localnet = None
+    global genericip
+    genericip = None
+    global command_list
+    command_list = []
+
+    parser = argparse.ArgumentParser(prog = 'dustox', description='Dustox - Network Scanner')
+    parser.add_argument('-l', '--localnet', action='store_true', help='Scan the local network')
+    parser.add_argument('-gip', '--genericip', action='store_true', help='Scan the local network with generic ip address')
+    parser.add_argument('-ip', help='The target IP address')
+    parser.add_argument('-rip', '--rangeip', help='The range of IP addresses to scan')
+    parser.add_argument('-p', '--port', help='The target port')
+    parser.add_argument('-rp', '--rangeport', help='The range of ports to scan')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose mode')
+
+    args = parser.parse_args()
+
+    if not any(vars(args).values()):
+        print(f"{interface}")
+        sys.exit()
+
+    if args.localnet and args.ip and args.genericip:
+        print(f"{Colors.LIGHT_RED}[-] {Colors.WHITE}Use only ip definition.")
+        sys.exit()
+
+    if not args.localnet and not args.ip and not args.genericip:
+        print(f"{Colors.LIGHT_RED}[-] {Colors.WHITE}Define ip address.")
+        sys.exit()
+
+    if args.rangeip and not args.ip and not args.localnet and not args.genericip:
+        print(f"{Colors.LIGHT_RED}[-] {Colors.WHITE}For set range ip, fist specify an IP address with -ip.")
+        sys.exit()
+
+    if args.rangeport and not args.port:
+        print(f"{Colors.LIGHT_RED}[-] {Colors.WHITE}For set range port, fist specify a port value with -p.")
+        sys.exit()
+
+    # Variables validation
+    if args.ip and not is_valid_ip(args.ip):
+        print(f"{Colors.LIGHT_RED}[-] {Colors.WHITE}Invalid IP format.")
+        sys.exit()
+
+    if args.port and not is_valid_port(args.port):
+        print(f"{Colors.LIGHT_RED}[-] {Colors.WHITE}Invalid port format.")
+        sys.exit()
+
+    if args.rangeip and not is_valid_rangeip(args.rangeip):
+        print(f"{Colors.LIGHT_RED}[-] {Colors.WHITE}Invalid range IP format.")
+        sys.exit()
+
+    if args.rangeport and not is_valid_rangeport(args.port, args.rangeport):
+        print(f"{Colors.LIGHT_RED}[-] {Colors.WHITE}Invalid range port format.")
+        sys.exit()
+
+    # Execute with arguments
+    if args.ip:
+        localnet = None
+        genericip = None
+        command_list.append(args.ip)
+
+    if args.localnet:
+        localnet = True
+
+    if args.genericip:
+        genericip = True
+
+    if args.rangeip:
+        command_list.clear()
+        command_list.append(f"{args.ip}-{args.rangeip}")
+        args.ip = f"{args.ip} ~ {args.rangeip}"
+
+    if args.port:
+        if not args.rangeport:
+            command_list.append(f'-p {args.port}')
+
+    if args.rangeport:
+        command_list.append(f'-p {args.port}-{args.port}')
+
+    if args.verbose:
+        verbose = True
+
+    scan_network()
+
+# Interface
+def interface_panel():
+    global interface
+    interface = f"""{Colors.WHITE}Dustox 0.0.1 (BETA)                    {Colors.YELLOW}░▓█▓                         
+                                       {Colors.YELLOW}▓████░                        
+                                     {Colors.YELLOW}░███▓▓▓                         
+                                    {Colors.YELLOW}░███▓░░▓                         
+             {Colors.YELLOW}░█████░                ▒██▓▓▓▓░                         
+              {Colors.YELLOW}▒▓▓██▒{Colors.YELLOW}█▒     {Colors.PINK}░▓▓▓▓▒▒  {Colors.YELLOW}██▓▓▓▓░                  {Colors.NEG_LIGHT_GREEN}░░▒▒▒▒░ 
+               {Colors.YELLOW}░▓▓░▓██▒▒  {Colors.PINK}▒▓▓▓▓▓▓▒▒{Colors.YELLOW}██▓▓▓▓░              {Colors.LIGHT_GREEN}░░▓▓▓▓{Colors.NEG_LIGHT_GREEN}▒▒▒▒▒▒░
+                 {Colors.YELLOW}▓▓▓▓▓▓██░{Colors.PINK}▓▓▓▓▓▓▓▓▒{Colors.YELLOW}█▓▓▓▓░           {Colors.LIGHT_GREEN}░░▓▓▓▓▓▓▓▓▓{Colors.NEG_LIGHT_GREEN}▒▒▒▒▒░
+                   {Colors.YELLOW}░▓▓▓▓░{Colors.PINK}▓▓▓▓▓▓▓▓▓▓▒{Colors.YELLOW}▓▓▓▒▒░       {Colors.LIGHT_GREEN}░░▓▓▓▓▓▓▓▓▓▓▓▓▓{Colors.NEG_LIGHT_GREEN}░▒▒▒▒░
+                      {Colors.YELLOW}░▓▒{Colors.PINK}▓▓▓▓▓▓▓▓▓▓▓▓▓▒▒▒▒▒  {Colors.LIGHT_GREEN}░░▓▓▓▓▓▓▓▓{Colors.NEG_LIGHT_RED}▒▒{Colors.LIGHT_GREEN}▓▓▓▓▓▓▓{Colors.NEG_LIGHT_GREEN}░▒▒▒▒░
+                        {Colors.YELLOW}░{Colors.PINK}▓▓▓▓▓▓▓▓▓▓▓▓▓▓▒▒░▒▒{Colors.LIGHT_GREEN}▓▓▓▓▓▓{Colors.NEG_LIGHT_RED}▒▒▒▒▒▒▒▒▒▒▒{Colors.LIGHT_GREEN}▓▓▓{Colors.NEG_LIGHT_GREEN}░▒▒▒░░
+    ░▒▒▒▒{Colors.LIGHT_GREEN}▓▓▓▒░░░░        {Colors.PINK}▓▓▓▓▓▓▓▓▓▓▓▓▓░{Colors.YELLOW}▓▓{Colors.PINK}▒░▒{Colors.LIGHT_GREEN}░▓▓▓{Colors.NEG_LIGHT_RED}▒▒▒{Colors.LIGHT_GREEN}▓▓▓▓▓░{Colors.NEG_LIGHT_RED}▒▒▒{Colors.LIGHT_GREEN}▓▓▓▓{Colors.NEG_LIGHT_GREEN}░░  ░ 
+    ░▒▒▒▒{Colors.LIGHT_GREEN}▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░{Colors.PINK}▓▒▓▓▓▓▓▓▓▓▓▓▒{Colors.YELLOW}▓▓▓{Colors.PINK}░{Colors.YELLOW}▓{Colors.PINK}░▒{Colors.LIGHT_GREEN}▓▓{Colors.NEG_LIGHT_RED}▒▒▒▒▒▒▒▒▒▒{Colors.LIGHT_GREEN}░▓▓▓▓▓▓{Colors.NEG_LIGHT_GREEN}░▒▒▒▒░
+    ░▒▒▒▒░{Colors.LIGHT_GREEN}▓▓▓▓▓▓▓{Colors.NEG_LIGHT_RED}▒░░▒{Colors.LIGHT_GREEN}▓▓▓▓{Colors.YELLOW}███{Colors.PINK}░▓▓▓▓▓▓▓░{Colors.YELLOW}█{Colors.PINK}▒░{Colors.YELLOW}▓▓▓▓{Colors.PINK}▒{Colors.LIGHT_GREEN}░▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓{Colors.NEG_LIGHT_GREEN}▒▒▒▒▒ 
+     ▒▒▒▒▒{Colors.LIGHT_GREEN}▓▓▓{Colors.NEG_LIGHT_RED}▒▒▒▒▒░░░▒▒▒▒░{Colors.YELLOW}█▓{Colors.PINK}░{Colors.YELLOW}█{Colors.PINK}▒▓▓▓▓▓▓░{Colors.YELLOW}▓▓▓{Colors.PINK}░░░▒{Colors.LIGHT_GREEN}░▓▓▓▓▓▓{Colors.NEG_LIGHT_RED}▒▒░{Colors.LIGHT_GREEN}▒▓▓▓▓▓▓▓{Colors.NEG_LIGHT_GREEN}░▒▒▒▒░ 
+     ░▒▒▒▒░{Colors.LIGHT_GREEN}▓▓{Colors.NEG_LIGHT_RED}░▒▒▒░{Colors.LIGHT_GREEN}▒▒▒{Colors.NEG_LIGHT_RED}▒▒▒░{Colors.LIGHT_GREEN}▓▒▒{Colors.PINK}{Colors.YELLOW}▓█{Colors.PINK}▓▓▓▓▓▓▓░▓▒░░▒▒▒▒{Colors.LIGHT_GREEN}▓▓▓▓▓{Colors.NEG_LIGHT_RED}▒▒▒▒▒▒{Colors.LIGHT_GREEN}▓▓▓▓▓▓{Colors.NEG_LIGHT_GREEN}▒▒▒▒▒  
+      ░▒▒▒▒▒{Colors.LIGHT_GREEN}▓▓▓▓{Colors.NEG_LIGHT_RED}░▒▒▒▒░{Colors.LIGHT_GREEN}▓▓▓▓▓▓{Colors.PINK}▓░░▓▒░░░░▓▓▓▓▓▓░░▒▒{Colors.LIGHT_GREEN}░░░▒▒▓▓▓▓▓▓▓▓▓▓{Colors.NEG_LIGHT_GREEN}░▒▒▒░░  
+       ▒▒▒▒▒▒{Colors.LIGHT_GREEN}▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓{Colors.PINK}▓▒▓▓▓▓▓▓▓▓▓▓░▓{Colors.NEG_LIGHT_RED}▒▒▒░░{Colors.LIGHT_GREEN}▒▓▓▓▓▓▓▓▓▓▓▓▓{Colors.NEG_LIGHT_GREEN}░▒░░     
+         ░░░░░░▒{Colors.LIGHT_GREEN}▓▓▓▓▓▓{Colors.NEG_LIGHT_RED}▒▒▒▒▒{Colors.LIGHT_GREEN}▓▓{Colors.NEG_LIGHT_RED}░░{Colors.PINK}▓▓▓▓▒▒▓▓▓▓▓▓▓{Colors.NEG_LIGHT_RED}▒▒▒▒░{Colors.LIGHT_GREEN}▓▓▓▓▓▓▓▓▓▓▓{Colors.NEG_LIGHT_GREEN}░▒▒▒░     
+         ░▒▒▒▒▒{Colors.LIGHT_GREEN}▓▓▓▓▓▓{Colors.NEG_LIGHT_RED}▒▒▒░{Colors.LIGHT_GREEN}▓▓▓▓{Colors.NEG_LIGHT_RED}▒░▒░{Colors.PINK}▓▓▓▓▓▓▓▓▓░▓{Colors.NEG_LIGHT_RED}░░▒░▒{Colors.LIGHT_GREEN}▓▓▓▓▓▓▓▓▓▓{Colors.NEG_LIGHT_GREEN}▒▒▒▒░      
+          ░▒▒▒▒▒░{Colors.LIGHT_GREEN}▓▓▓▓▓▓▓▓{Colors.NEG_LIGHT_RED}▒░{Colors.LIGHT_GREEN}▓▓▓{Colors.NEG_LIGHT_RED}▒▒▒░░{Colors.PINK}▓▓▓▓▓▓▓▓{Colors.NEG_LIGHT_RED}░▒▒▒{Colors.PINK}▒▒░{Colors.LIGHT_GREEN}▓▓▓░▒▓▓{Colors.NEG_LIGHT_GREEN}░▒▒▒▒░       
+            ░▒▒▒▒▒▒{Colors.LIGHT_GREEN}▓▓▒▒▓▓▓▓▓▓▓▓▓{Colors.NEG_LIGHT_RED}░▒▒░{Colors.PINK}▓▓▓▒░░▒▒▒▒▒{Colors.LIGHT_GREEN}▓▓▓▓▓▓▓▓{Colors.NEG_LIGHT_GREEN}▒  ░▒░         
+              ░░▒░  ░▒▒{Colors.LIGHT_GREEN}▓▓▓▓▓▓▓▓▓▓▓▓▒▓▒{Colors.PINK}▓▓▒▒▒▒{Colors.LIGHT_GREEN}▓▓░▓▓▓▓▓{Colors.NEG_LIGHT_GREEN}▒▒▒▒▒░            
+                   ▒▒▒▒▒▒▒░░{Colors.LIGHT_GREEN}▓▓▓░▓▓▓▓▓░▓▓{Colors.LIGHT_GREEN}░░░░▓▓{Colors.NEG_LIGHT_GREEN}░▒▒▒▒▒▒▒░              
+                     ░░▒▒▒▒▒▒▒ ▒▒▒▒▒▒▒▒▒░    {Colors.NEG_LIGHT_GREEN}░▒▒▒░░                  
+                           ░░  ▒▒▒▒▒▒▒▒▒░                                     
+
+{Colors.WHITE}Make sure you are using the latest version at {Colors.LIGHT_GREEN}'https://github/com/yzee4/Dustox'{Colors.WHITE}.
+
+    {Colors.LIGHT_BLUE}-| {Colors.WHITE}coded by Yzee4
+    {Colors.LIGHT_BLUE}-| {Colors.WHITE}produced on Python{Colors.WHITE}
+
+{Colors.WHITE}Need help? Use {Colors.LIGHT_GREEN}'-h'{Colors.WHITE}."""
+
+if __name__ == "__main__":
+    Colors()
+    verify_root()
+    initializing_pupitar_noroot()
+    generic_ip()
+    interface_panel()
+    main()
