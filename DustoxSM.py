@@ -44,6 +44,7 @@ class Colors:
     YELLOW = '\033[0;93m'
     PINK = '\033[0;95m'
     CYAN = '\033[0;96m'
+Colors()
 
 # Check user mode
 def verify_root():
@@ -52,6 +53,7 @@ def verify_root():
         root = None
     else:
         root = True
+verify_root()
 
 # Check required tools
 def check_tool_installed(tool_name):
@@ -65,20 +67,24 @@ def initializing_dustox():
         for tool in not_installed_tools:
             print(f"{Colors.LIGHT_RED}> {Colors.YELLOW}{tool} {Colors.WHITE}not installed. To install, use {Colors.LIGHT_GREEN}'pkg install {tool}'{Colors.WHITE}")
             sys.exit(0)
+initializing_dustox()
 
-# Waiting animation
-stop_animation = False
-def waiting_animation(scanning_thread):
-    global stop_animation
-    while not stop_animation:
-        symbols = [".  ", ".. ", "..."]
-        while scanning_thread.is_alive():
-            for symbol in symbols:
-                print(" " * 12 + f"\r{Colors.LIGHT_GREEN}> {Colors.WHITE}Scanning started{symbol}", end='', flush=True)
-                time.sleep(0.5)
+# Interface
+def MainMenu():
+    global interface
+    interface = f"""{Colors.YELLOW}Dustox {Colors.WHITE}Simple {Colors.YELLOW}Menu {Colors.WHITE}- {Colors.LIGHT_GREEN}Open {Colors.WHITE}Port {Colors.WHITE}Scanner{Colors.WHITE}\n
+{Colors.LIGHT_BLUE}-| {Colors.WHITE}GitHub {Colors.LIGHT_GREEN}https://github.com/yzee4/DustoxSimpleMenu{Colors.WHITE}"""
+
+    global main_scans
+    main_scans = f"""
+1 {Colors.LIGHT_GREEN}> {Colors.WHITE}Local IP address
+2 {Colors.LIGHT_GREEN}> {Colors.WHITE}Specified IP address
+"""
+MainMenu()
 
 # Principal scanning logic
 def scan_network():
+    print(f"{Colors.LIGHT_GREEN}> {Colors.WHITE}Scanning...")
     # --localnet flag
     if localnet:
         result = subprocess.run("ip route | grep -oP 'src \K\S+' | head -n 1", shell=True, capture_output=True, text=True)
@@ -95,22 +101,6 @@ def scan_network():
         command = ['nmap', '-open','-T5', *command_list]
 
     # -ip flag
-    # Waiting animation
-    scanning_thread = threading.current_thread()
-    waiting_thread = threading.Thread(target=waiting_animation, args=(scanning_thread,))
-    waiting_thread.daemon = True
-    waiting_thread.start()
-
-    if timescan != None:
-        def timer_to_scan(signum, frame):
-            global stop_animation
-            stop_animation = True
-            time.sleep(2.5)
-            print(f"\n\n{Colors.LIGHT_GREEN}> {Colors.WHITE}Time is over\n\n{Colors.WHITE}Copyright (c) 2023 Yzee4")
-            sys.exit()
-        signal.signal(signal.SIGALRM, timer_to_scan)
-        signal.alarm(timescan) 
-
     try:
         repeatcounter = 1
         for _ in range(repeat):
@@ -125,7 +115,6 @@ def scan_network():
             ip_address = None
             num_ips_scanned = 0
             num_ports_scanned = 0
-            print()
 
             if paragraphs:
                 if repeat > 1:
@@ -221,11 +210,17 @@ in {total_scan_time} seconds between {started_time}...{end_time}\n""")
     except subprocess.CalledProcessError as e:
         print(f"{Colors.LIGHT_RED}> {Colors.WHITE}Unknown error: {str(e)}")
     except KeyboardInterrupt:
-        print(f"\n\n{Colors.LIGHT_GREEN}> {Colors.WHITE}Scan interrupted\n")
+        print(f"\n{Colors.LIGHT_GREEN}> {Colors.WHITE}Scan interrupted\n")
+        main()
     finally:
         signal.alarm(0)
-    print(f"{Colors.WHITE}Copyright (c) 2023 Yzee4")
-    sys.exit()
+    try:
+        input(f"{Colors.WHITE}Enter any key for back {Colors.YELLOW}> {Colors.WHITE}")
+        main()
+
+    except KeyboardInterrupt:
+        print(f"\n\n{Colors.WHITE}Copyright (c) 2023 Yzee4")
+        sys.exit()
 
 # Check valid flags
 def is_valid_ip(argsip):
@@ -238,9 +233,11 @@ def is_valid_ip(argsip):
             if not (0 <= int(part) <= 255):
                 return False
         return True
-    
+   
 # Flags management
 def main():
+    subprocess.run("clear")
+    print(f"{interface}")
     argsip = None
     global localnet 
     localnet = None
@@ -252,7 +249,6 @@ def main():
     command_list = []
 
     try:
-        print(f"{interface}")
         print(f"{main_scans}")
         userselect = input(f"Select option {Colors.YELLOW}>{Colors.WHITE} ")
 
@@ -266,8 +262,8 @@ def main():
 
         else:
             print(f"{Colors.LIGHT_RED}> {Colors.WHITE}Invalid option")
-            sys.exit()
-
+            time.sleep(0.5)
+            main()
 
         # Variables validation
         if argsip:
@@ -280,22 +276,4 @@ def main():
     except KeyboardInterrupt:
         print(f"\n\n{Colors.WHITE}Copyright (c) 2023 Yzee4")
         sys.exit()
-
-# Interface
-def MainMenu():
-    global interface
-    interface = f"""{Colors.YELLOW}Dustox {Colors.WHITE}Simple {Colors.YELLOW}Menu {Colors.WHITE}- {Colors.LIGHT_GREEN}Open {Colors.WHITE}Port {Colors.WHITE}Scanner{Colors.WHITE}\n
-{Colors.LIGHT_BLUE}-| {Colors.WHITE}GitHub {Colors.LIGHT_GREEN}https://github.com/yzee4/DustoxSimpleMenu{Colors.WHITE}"""
-
-    global main_scans
-    main_scans = f"""
-1 {Colors.LIGHT_GREEN}> {Colors.WHITE}Local IP address
-2 {Colors.LIGHT_GREEN}> {Colors.WHITE}Specified IP address
-"""
-
-if __name__ == "__main__":
-    Colors()
-    verify_root()
-    initializing_dustox()
-    MainMenu()
-    main()
+main()
