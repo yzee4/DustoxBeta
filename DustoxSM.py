@@ -72,9 +72,28 @@ initializing_dustox()
 # Interface
 def MainMenu():
     global interface
-    interface = f"""{Colors.YELLOW}Dustox {Colors.WHITE}Simple {Colors.YELLOW}Menu {Colors.WHITE}- {Colors.LIGHT_GREEN}Open {Colors.WHITE}Port {Colors.WHITE}Scanner{Colors.WHITE}\n
-{Colors.LIGHT_BLUE}-| {Colors.WHITE}GitHub {Colors.LIGHT_GREEN}https://github.com/yzee4/DustoxSimpleMenu{Colors.WHITE}"""
-
+    interface = f"""{Colors.YELLOW}Dustox {Colors.WHITE}Simple {Colors.YELLOW}Menu {Colors.WHITE}- {Colors.LIGHT_GREEN}Open {Colors.WHITE}Port {Colors.WHITE}Scanner{Colors.WHITE}
+{Colors.LIGHT_BLUE}-| {Colors.WHITE}GitHub {Colors.YELLOW}https://github.com/yzee4/DustoxSimpleMenu{Colors.WHITE}\n
+{Colors.LIGHT_GREEN}            ████                            
+           █████████                        
+           ████████████                     
+            ███████████████                 
+             █████████████████              
+{Colors.YELLOW}            ████████████████████            
+{Colors.YELLOW}           ████████████████████████         
+{Colors.LIGHT_BLUE}           ████████████████████████         
+{Colors.LIGHT_BLUE}   ██████  █████████████████████████        
+{Colors.WHITE}  ████████████████████████████████████      
+{Colors.LIGHT_BLUE} ██████████████████████████████████████     
+{Colors.LIGHT_BLUE} ███    █████ ███████████████████████████   
+{Colors.LIGHT_BLUE} ██{Colors.YELLOW}            ████████████████████████████  
+{Colors.YELLOW}               ██████████████████████████ █ 
+{Colors.LIGHT_GREEN}               ███████████████████████████  
+               █████████████████████████    
+               ████    ████   █████████ █   
+             ██         ███     ████████ █  
+     ████████████  ███████        ████████  
+                                   ██ █  ██{Colors.WHITE}"""                                           
     global main_scans
     main_scans = f"""
 1 {Colors.LIGHT_GREEN}> {Colors.WHITE}Local IP address
@@ -84,7 +103,7 @@ MainMenu()
 
 # Principal scanning logic
 def scan_network():
-    print(f"{Colors.LIGHT_GREEN}> {Colors.WHITE}Scanning...")
+    print(f"\n{Colors.LIGHT_GREEN}> {Colors.WHITE}Scanning...")
     # --localnet flag
     if localnet:
         result = subprocess.run("ip route | grep -oP 'src \K\S+' | head -n 1", shell=True, capture_output=True, text=True)
@@ -194,7 +213,9 @@ def scan_network():
                     total_scan_time = match_time.group(1)
                     if num_ips_scanned == 0:
                         print(f"\n{Colors.LIGHT_RED}> {Colors.WHITE}No results for the search. Try again or change some options")
-                        sys.exit(0)
+                        print()
+                        input(f"{Colors.WHITE}Enter any key for back {Colors.YELLOW}> {Colors.WHITE}")
+                        main()
                     if num_ips_scanned > 1:
                         show_ip_word = "addresses"
                     else:
@@ -289,26 +310,26 @@ def main():
                 pass
 
             else:
-                print(f"{Colors.LIGHT_RED}> {Colors.WHITE}Invalid option")
+                print(f"\n{Colors.LIGHT_RED}> {Colors.WHITE}Invalid option")
                 time.sleep(0.15)
                 main()
 
         else:
-            print(f"{Colors.LIGHT_RED}> {Colors.WHITE}Invalid option")
+            print(f"\n{Colors.LIGHT_RED}> {Colors.WHITE}Invalid option")
             time.sleep(0.15)
             main()
 
         # Variables validation
         if argsip:
             if argsip and not is_valid_ip(argsip):
-                print(f"{Colors.LIGHT_RED}> {Colors.WHITE}Invalid IP address format")
+                print(f"\n{Colors.LIGHT_RED}> {Colors.WHITE}Invalid IP address format")
                 time.sleep(0.5)
                 main()
             command_list.append(argsip)
         
         if argsport:
             if argsport and not is_valid_port(argsport):
-                print(f"{Colors.LIGHT_RED}> {Colors.WHITE}Invalid port format")
+                print(f"\n{Colors.LIGHT_RED}> {Colors.WHITE}Invalid port format")
                 sys.exit()
             command_list.append(f"-p {argsport}")
 
