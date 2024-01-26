@@ -43,11 +43,5 @@ python3 sainwha.py
    - `Nmap` For scans all networks and sends deauthentication packets. To  install use `sudo apt install nmap`
    - `Net-tools` For set interface to scans. To install use `sudo apt install net-tools`
    
-#### Supported actions
-
-- `allow`: Allow the connection, no further processing.
-- `block`: Block the connection, no further processing. Send a TCP RST if it's a TCP connection.
-- `drop`: For UDP, drop the packet that triggered the rule, continue processing future packets in the same flow. For
-  TCP, same as `block`.
-- `modify`: For UDP, modify the packet that triggered the rule using the given modifier, continue processing future
-  packets in the same flow. For TCP, same as `allow`.
+#### For help
+# ![Sainwha](docs/Sainwha-3.png) 
