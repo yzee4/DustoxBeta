@@ -1,4 +1,4 @@
-# ![OpenGFW](docs/logo.png)
+# Sainwha
 
 [![License][1]][2]
 
@@ -10,101 +10,39 @@
  packets to the network. Connected clients are deauthenticated and 
  cannot be reconnected unless the attack is stopped. [See more](https://en.wikipedia.org/wiki/Wi-Fi_deauthentication_attack).
 
+# ![Sainwha](docs/Sainwha-1.png) ![Sainwha](docs/Sainwha-2.png)
 
 > [!CAUTION]
-> Your network card may be disabled while the program is running
+> Your network card may be disabled while the program is running.
 
 > [!NOTE]
-> The program is under development, possibly has errors
+> The program is under development, possibly has errors.
 
-## What Sainwha does?
-
-- Full IP/TCP reassembly, various protocol analyzers
-    - HTTP, TLS, DNS, SSH, and many more to come
-    - "Fully encrypted traffic" detection for Shadowsocks,
-      etc. (https://gfw.report/publications/usenixsecurity23/data/paper/paper.pdf)
-    - Trojan (proxy protocol) detection based on Trojan-killer (https://github.com/XTLS/Trojan-killer)
-    - [WIP] Machine learning based traffic classification
-- Full IPv4 and IPv6 support
-- Flow-based multicore load balancing
-- Connection offloading
-- Powerful rule engine based on [expr](https://github.com/expr-lang/expr)
-- Flexible analyzer & modifier framework
-- Extensible IO implementation (only NFQueue for now)
-- [WIP] Web UI
-
-## Use cases
-
-- Ad blocking
-- Parental control
-- Malware protection
-- Abuse prevention for VPN/proxy services
-- Traffic analysis (log only mode)
-
-## Usage
-
-### Build
-
-```shell
-go build
+### Installation
+- Open linux terminal
+```terminal
+git clone https://github.com/yzee4/Sainwha.git
 ```
 
-### Run
-
-```shell
-export OPENGFW_LOG_LEVEL=debug
-./OpenGFW -c config.yaml rules.yaml
+### Running
+- Open linux terminal
+> Go to the Sainwha folder
+```terminal
+cd Sainwha
+```
+> Run with python
+```terminal
+python3 sainwha.py
 ```
 
-### Example config
+### Requirements
 
-```yaml
-io:
-  queueSize: 1024
-  local: true # set to false if you want to run OpenGFW on FORWARD chain
+> All requirements can be installed directly on the terminal
 
-workers:
-  count: 4
-  queueSize: 16
-  tcpMaxBufferedPagesTotal: 4096
-  tcpMaxBufferedPagesPerConn: 64
-  udpMaxStreams: 4096
-```
-
-### Example rules
-
-[Analyzer properties](docs/Analyzers.md)
-
-For syntax of the expression language, please refer
-to [Expr Language Definition](https://expr-lang.org/docs/language-definition).
-
-```yaml
-- name: block v2ex http
-  action: block
-  expr: string(http?.req?.headers?.host) endsWith "v2ex.com"
-
-- name: block v2ex https
-  action: block
-  expr: string(tls?.req?.sni) endsWith "v2ex.com"
-
-- name: block shadowsocks
-  action: block
-  expr: fet != nil && fet.yes
-
-- name: block trojan
-  action: block
-  expr: trojan != nil && trojan.yes
-
-- name: v2ex dns poisoning
-  action: modify
-  modifier:
-    name: dns
-    args:
-      a: "0.0.0.0"
-      aaaa: "::"
-  expr: dns != nil && dns.qr && any(dns.questions, {.name endsWith "v2ex.com"})
-```
-
+   - `Python3` For running program. To install use `sudo apt install python3`
+   - `Nmap` For scans all networks and sends deauthentication packets. To  install use `sudo apt install nmap`
+   - `Net-tools` For set interface to scans. To install use `sudo apt install net-tools`
+   
 #### Supported actions
 
 - `allow`: Allow the connection, no further processing.
