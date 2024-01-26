@@ -1,26 +1,15 @@
 <h1 align="center">Sainwha</h1>
 
-[![License][1]][2]
-
-[1]: https://img.shields.io/badge/License-MIT-brightgreen.svg
-
-[2]: LICENSE
-
- How it works is simple, the program sends deauthentication
+<h4> How it works is simple, the program sends deauthentication
  packets to the network. Connected clients are deauthenticated and 
- cannot be reconnected unless the attack is stopped. [See more](https://en.wikipedia.org/wiki/Wi-Fi_deauthentication_attack).
+ cannot be reconnected unless the attack is stopped.</h4>
 
 <p align="center">
   <img src="docs/Sainwha-1.png" alt="Sainwha" style="border: 1px solid #000000;">
 </p>
 
-> [!CAUTION]
-> Your network card may be disabled while the program is running.
+<h2>Installation</h2>
 
-> [!NOTE]
-> The program is under development, possibly has errors.
-
-# Installation
 > Open Linux terminal
 
 ```terminal
@@ -34,7 +23,8 @@ git clone https://github.com/yzee4/Sainwha.git
 </p>
 <h4 align="center">First we define the scanning interface, then we check and configure the network to attack. The attack is launched and clients are disconnected until the attack is stopped.</h4>
 
-# Running
+<h2>Running</h2>
+
 > Open Linux terminal
 
 <h4>2. Go to Sainwha folder</h4>
@@ -61,3 +51,11 @@ python3 sainwha.py
    - `Python3` For running program. To install use `sudo apt install python3`
    - `Nmap` For scans all networks and sends deauthentication packets. To  install use `sudo apt install nmap`
    - `Net-tools` For set interface to scans. To install use `sudo apt install net-tools`
+
+<h2>License</h2>
+
+   - Copyright (c) 2023 yzee4 
+   - License is `MIT`
+
+<h2>Thanks for use :)</h2>
+<h4 align="center">[ visit my other projects ]</h4>
